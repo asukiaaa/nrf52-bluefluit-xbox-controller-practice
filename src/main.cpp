@@ -260,11 +260,11 @@ void handle_service_battery(uint16_t conn_handle) {
   Serial.print("Discovering characteristic battery ... ");
   if (!charaBattery.discover()) {
     Serial.println("not found !!!");
-    Bluefruit.disconnect(conn_handle);
     return;
+  } else {
+    Serial.println("Found it");
+    charaBattery.enableNotify();
   }
-  Serial.println("Found it");
-  charaBattery.enableNotify();
 }
 
 void connect_callback(uint16_t conn_handle) {
@@ -276,10 +276,6 @@ void connect_callback(uint16_t conn_handle) {
   if (serviceHid.discover(conn_handle)) {
     Serial.println("Found HID service");
     conn->requestPairing();
-    return;
-  } else if (serviceBattery.discover(conn_handle)) {
-    Serial.println("Found battery service");
-    // handle_service_battery(conn_handle);
     return;
   }
   Serial.println("Cannot found target service");
@@ -336,7 +332,12 @@ void connection_secured_callback(uint16_t conn_handle) {
     Serial.printf("HID Flags  : 0x%02X\n", hidInfo[3]);
 
     handle_service_hid(conn_handle);
-    handle_service_battery(conn_handle);
+
+    if (serviceBattery.discover(conn_handle)) {
+      Serial.println("Found battery service");
+      // handle_service_battery(conn_handle);
+      handle_service_battery(conn_handle);
+    }
 
     // // BLEClientHidAdafruit currently only supports Boot Protocol Mode
     // // for Keyboard and Mouse. Let's set the protocol mode on prph to Boot
