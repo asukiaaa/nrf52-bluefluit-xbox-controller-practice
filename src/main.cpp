@@ -5,17 +5,11 @@
 // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/examples/Central/central_custom_hrm/central_custom_hrm.ino
 // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/examples/Central/central_hid/central_hid.ino
 
-
 #include <bluefruit.h>
 
-BLEClientService serviceBattery(UUID16_SVC_BATTERY);
-BLEClientCharacteristic charaBattery(UUID16_CHR_BATTERY_LEVEL);
 BLEClientService serviceHid(UUID16_SVC_HUMAN_INTERFACE_DEVICE);
-BLEClientCharacteristic charaHidInfo(UUID16_CHR_HID_INFORMATION);
 BLEClientCharacteristic charaReport(UUID16_CHR_REPORT);
 BLEClientCharacteristic charaReportMap(UUID16_CHR_REPORT_MAP);
-
-BLEClientHidAdafruit hidAdafruit;
 
 void printUuid16List(uint8_t* buffer, uint8_t len) {
   Serial.printf("%14s ", "16-Bit UUID");
@@ -45,27 +39,10 @@ void printUuid128List(uint8_t* buffer, uint8_t len) {
   Serial.println();
 }
 
-void scan_callback(ble_gap_evt_adv_report_t* report) {
-  PRINT_LOCATION();
-
-  // Bluefruit.Central.connect(report);
-  // return;
-
-  if (report->type.scan_response) {
-    // it is not advertising data
-    return;
-  }
-
+void print_advertising_info(ble_gap_evt_adv_report_t* report) {
   uint8_t len = 0;
   uint8_t buffer[32];
   memset(buffer, 0, sizeof(buffer));
-
-  // if (!Bluefruit.Scanner.parseReportByType(report,
-  //                                          BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME,
-  //                                          buffer, sizeof(buffer))) {
-  //   Bluefruit.Scanner.resume();
-  //   return;
-  // }
 
   /* Display the timestamp and device address */
   if (report->type.scan_response) {
@@ -121,7 +98,7 @@ void scan_callback(ble_gap_evt_adv_report_t* report) {
   len = Bluefruit.Scanner.parseReportByType(report, BLE_GAP_AD_TYPE_APPEARANCE,
                                             buffer, sizeof(buffer));
   if (len) {
-    Serial.printf("%14s %02x %02x", "APPEARANCE");
+    Serial.printf("%14s ", "APPEARANCE");
     Serial.printBuffer(buffer, len, '-');
     Serial.println();
     memset(buffer, 0, sizeof(buffer));
@@ -187,8 +164,14 @@ void scan_callback(ble_gap_evt_adv_report_t* report) {
     Serial.println();
     memset(buffer, 0, sizeof(buffer));
   }
-
   Serial.println();
+}
+
+void scan_callback(ble_gap_evt_adv_report_t* report) {
+  PRINT_LOCATION();
+
+  print_advertising_info(report);
+  Bluefruit.Central.connect(report);
 
   // For Softdevice v6: after received a report, scanner will be paused
   // We need to call Scanner resume() to continue scanning
@@ -208,8 +191,6 @@ void read_and_print_chara(uint16_t conn_handle,
 }
 
 void handle_service_hid(uint16_t conn_handle) {
-  Serial.println("hid info");
-  read_and_print_chara(conn_handle, &charaHidInfo);
 
   Serial.print("Discovering characteristic report map ... ");
   if (!charaReportMap.discover()) {
@@ -220,15 +201,6 @@ void handle_service_hid(uint16_t conn_handle) {
   }
   Serial.println("Found it");
   read_and_print_chara(conn_handle, &charaReportMap);
-
-  Serial.print("Discovering hid info ... ");
-  if (!charaHidInfo.discover()) {
-    // Measurement chr is mandatory, if it is not found (valid), then disconnect
-    Serial.println("not found !!!");
-    Bluefruit.disconnect(conn_handle);
-    return;
-  }
-  Serial.println("Found it");
 
   Serial.print("Discovering characteristic report ... ");
   if (!charaReport.discover()) {
@@ -245,17 +217,6 @@ void handle_service_hid(uint16_t conn_handle) {
     Serial.println(
         "Couldn't enable notify for report. Increase DEBUG LEVEL for "
         "troubleshooting");
-  }
-}
-
-void handle_service_battery(uint16_t conn_handle) {
-  Serial.print("Discovering characteristic battery ... ");
-  if (!charaBattery.discover()) {
-    Serial.println("not found !!!");
-    return;
-  } else {
-    Serial.println("Found it");
-    charaBattery.enableNotify();
   }
 }
 
@@ -281,19 +242,9 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   Serial.println(reason, HEX);
 }
 
-void callbackBattery(BLEClientCharacteristic* chr, uint8_t* data,
-                     uint16_t len) {
-  Serial.println("callbackBattery");
-  for (int i = 0; i < len; ++i) {
-    Serial.print(data[i]);
-    Serial.print(" ");
-  }
-  Serial.println();
-}
-
-void callbackHIDReport(BLEClientCharacteristic* chr, uint8_t* data,
-                       uint16_t len) {
-  Serial.println("callbackHIDReport");
+void report_notification_callback(BLEClientCharacteristic* chr, uint8_t* data,
+                                  uint16_t len) {
+  Serial.println("report_notification_callback");
   for (int i = 0; i < len; ++i) {
     Serial.printf("%02x ", data[i]);
   }
@@ -313,23 +264,7 @@ void connection_secured_callback(uint16_t conn_handle) {
     conn->requestPairing();
   } else {
     Serial.println("Secured");
-
-    // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.characteristic.hid_information.xml
-    uint8_t hidInfo[4];
-    charaHidInfo.read(hidInfo, 4);
-
-    Serial.printf("HID version: %d.%d\n", hidInfo[0], hidInfo[1]);
-    Serial.print("Country code: ");
-    Serial.println(hidInfo[2]);
-    Serial.printf("HID Flags  : 0x%02X\n", hidInfo[3]);
-
     handle_service_hid(conn_handle);
-
-    if (serviceBattery.discover(conn_handle)) {
-      Serial.println("Found battery service");
-      // handle_service_battery(conn_handle);
-      handle_service_battery(conn_handle);
-    }
   }
 }
 
@@ -340,15 +275,11 @@ void setup() {
   Serial.println("Bluefruit52 Central ADV Scan Example");
   Serial.println("------------------------------------\n");
 
-  charaBattery.setNotifyCallback(callbackBattery);
-  charaReport.setNotifyCallback(callbackHIDReport);
+  charaReport.setNotifyCallback(report_notification_callback);
 
   serviceHid.begin();
-  charaHidInfo.begin();
   charaReport.begin();
   charaReportMap.begin();
-  serviceBattery.begin();
-  charaBattery.begin();
 
   // Initialize Bluefruit with maximum connections as Peripheral = 0, Central =
   // 1 SRAM usage required by SoftDevice will increase dramatically with number
@@ -365,18 +296,9 @@ void setup() {
   Bluefruit.Central.setConnectCallback(connect_callback);
   Bluefruit.Central.setDisconnectCallback(disconnect_callback);
   Bluefruit.Security.setSecuredCallback(connection_secured_callback);
-
-  /* Start Central Scanning
-   * - Enable auto scan if disconnected
-   * - Filter out packet with a min rssi
-   * - Interval = 100 ms, window = 50 ms
-   * - Use active scan (used to retrieve the optional scan response adv packet)
-   * - Start(0) = will scan forever since no timeout is given
-   */
   Bluefruit.Scanner.setRxCallback(scan_callback);
   Bluefruit.Scanner.restartOnDisconnect(true);
-  Bluefruit.Scanner.filterUuid(serviceHid.uuid, serviceBattery.uuid);
-  // Bluefruit.Scanner.filterUuid(serviceBattery.uuid);
+  Bluefruit.Scanner.filterUuid(serviceHid.uuid);
   Bluefruit.Scanner.filterRssi(-80);
   // Bluefruit.Scanner.filterUuid(BLEUART_UUID_SERVICE); // only invoke callback
   // if detect bleuart service
