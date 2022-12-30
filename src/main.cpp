@@ -47,8 +47,14 @@ void printUuid128List(uint8_t* buffer, uint8_t len) {
 
 void scan_callback(ble_gap_evt_adv_report_t* report) {
   PRINT_LOCATION();
-  Bluefruit.Central.connect(report);
-  return;
+
+  // Bluefruit.Central.connect(report);
+  // return;
+
+  if (report->type.scan_response) {
+    // it is not advertising data
+    return;
+  }
 
   uint8_t len = 0;
   uint8_t buffer[32];
@@ -108,6 +114,16 @@ void scan_callback(ble_gap_evt_adv_report_t* report) {
                                           BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME,
                                           buffer, sizeof(buffer))) {
     Serial.printf("%14s %s\n", "COMPLETE NAME", buffer);
+    memset(buffer, 0, sizeof(buffer));
+  }
+
+  /* Appearance */
+  len = Bluefruit.Scanner.parseReportByType(report, BLE_GAP_AD_TYPE_APPEARANCE,
+                                            buffer, sizeof(buffer));
+  if (len) {
+    Serial.printf("%14s %02x %02x", "APPEARANCE");
+    Serial.printBuffer(buffer, len, '-');
+    Serial.println();
     memset(buffer, 0, sizeof(buffer));
   }
 
